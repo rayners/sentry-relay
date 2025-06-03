@@ -2,8 +2,11 @@
  * Sentry Relay Cloudflare Worker
  * 
  * Receives error reports from Foundry VTT modules and forwards them to Sentry
- * with proper formatting and author-based project routing.
+ * with proper formatting, security controls, and author-based project routing.
  */
+
+import { createRateLimitMiddleware, RateLimiter } from './middleware/rate-limiter';
+import { createValidationMiddleware, InputValidator } from './middleware/input-validator';
 
 export interface Env {
   // Sentry DSNs for different authors (set as secrets)
@@ -12,6 +15,18 @@ export interface Env {
   
   // Configuration variables
   ALLOWED_ORIGINS?: string;
+  
+  // Rate limiting configuration
+  RATE_LIMIT_MAX_REQUESTS?: string;
+  RATE_LIMIT_WINDOW_SECONDS?: string;
+  RATE_LIMIT_BURST_ALLOWANCE?: string;
+  
+  // Input validation configuration
+  MAX_REQUEST_SIZE?: string;
+  MAX_STRING_LENGTH?: string;
+  MAX_ARRAY_LENGTH?: string;
+  MAX_OBJECT_DEPTH?: string;
+  ALLOWED_CONTENT_TYPES?: string;
 }
 
 interface ErrorReportResponse {
@@ -92,9 +107,31 @@ interface SentryEvent {
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    // Get CORS headers early for consistent usage
+    const corsHeaders = getCORSHeaders(env, request);
+
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return handleCORS(request, env);
+    }
+
+    // Initialize security middlewares
+    const rateLimitConfig = RateLimiter.getConfigFromEnv(env);
+    const rateLimitMiddleware = createRateLimitMiddleware(rateLimitConfig);
+    
+    const validationConfig = InputValidator.getConfigFromEnv(env);
+    const validationMiddleware = createValidationMiddleware(validationConfig);
+
+    // Apply rate limiting
+    const rateLimitResponse = rateLimitMiddleware(request, corsHeaders);
+    if (rateLimitResponse) {
+      return rateLimitResponse;
+    }
+
+    // Apply input validation
+    const validationResult = await validationMiddleware(request, corsHeaders);
+    if (validationResult.response) {
+      return validationResult.response;
     }
 
     try {
@@ -103,28 +140,28 @@ export default {
 
       // Route handling
       if (path.startsWith('/report/')) {
-        return handleErrorReport(request, env, path);
+        return handleErrorReport(request, env, path, validationResult.validatedData);
       } else if (path.startsWith('/test/')) {
-        return handleEndpointTest(request, env, path);
+        return handleEndpointTest(request, env, path, validationResult.validatedData);
       } else if (path === '/health') {
-        return handleHealthCheck();
+        return handleHealthCheck(env, request);
       } else {
         return new Response('Not Found', { 
           status: 404,
-          headers: getCORSHeaders(env)
+          headers: corsHeaders
         });
       }
     } catch (error) {
       console.error('Worker error:', error);
       return new Response('Internal Server Error', { 
         status: 500,
-        headers: getCORSHeaders(env)
+        headers: corsHeaders
       });
     }
   }
 };
 
-async function handleErrorReport(request: Request, env: Env, path: string): Promise<Response> {
+async function handleErrorReport(request: Request, env: Env, path: string, validatedData?: any): Promise<Response> {
   if (request.method !== 'POST') {
     return new Response('Method Not Allowed', { 
       status: 405,
@@ -152,15 +189,20 @@ async function handleErrorReport(request: Request, env: Env, path: string): Prom
   }
 
   try {
-    // Parse the Foundry error report
-    const foundryReport: FoundryErrorReport = await request.json();
-    
-    // Validate required fields
-    if (!foundryReport.error || !foundryReport.attribution || !foundryReport.meta) {
-      return createStandardResponse(false, {
-        message: 'Invalid error report format: missing required fields',
-        status: 400
-      });
+    // Use validated data if available, otherwise parse request
+    let foundryReport: FoundryErrorReport;
+    if (validatedData) {
+      foundryReport = validatedData;
+    } else {
+      foundryReport = await request.json();
+      
+      // Basic validation if data wasn't pre-validated
+      if (!foundryReport.error || !foundryReport.attribution || !foundryReport.meta) {
+        return createStandardResponse(false, {
+          message: 'Invalid error report format: missing required fields',
+          status: 400
+        });
+      }
     }
 
     // Convert to Sentry format
@@ -189,7 +231,7 @@ async function handleErrorReport(request: Request, env: Env, path: string): Prom
   }
 }
 
-async function handleEndpointTest(request: Request, env: Env, path: string): Promise<Response> {
+async function handleEndpointTest(request: Request, env: Env, path: string, validatedData?: any): Promise<Response> {
   if (request.method !== 'POST') {
     return createStandardResponse(false, {
       message: 'Method Not Allowed',
@@ -216,8 +258,8 @@ async function handleEndpointTest(request: Request, env: Env, path: string): Pro
   }
 
   try {
-    // Parse test payload
-    const testData = await request.json();
+    // Use validated data if available, otherwise parse request
+    const testData = validatedData || await request.json();
     
     // Create a test Sentry event
     const testEvent: SentryEvent = {
@@ -268,7 +310,7 @@ async function handleEndpointTest(request: Request, env: Env, path: string): Pro
   }
 }
 
-async function handleHealthCheck(): Promise<Response> {
+async function handleHealthCheck(env?: Env, request?: Request): Promise<Response> {
   return new Response(JSON.stringify({
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -277,7 +319,7 @@ async function handleHealthCheck(): Promise<Response> {
     status: 200,
     headers: {
       'Content-Type': 'application/json',
-      ...getCORSHeaders()
+      ...getCORSHeaders(env, request)
     }
   });
 }
@@ -285,18 +327,34 @@ async function handleHealthCheck(): Promise<Response> {
 function handleCORS(request: Request, env: Env): Response {
   return new Response(null, {
     status: 204,
-    headers: getCORSHeaders(env)
+    headers: getCORSHeaders(env, request)
   });
 }
 
-function getCORSHeaders(env?: Env): Record<string, string> {
-  const allowedOrigins = env?.ALLOWED_ORIGINS?.split(',') || ['*'];
+function getCORSHeaders(env?: Env, request?: Request): Record<string, string> {
+  const allowedOrigins = env?.ALLOWED_ORIGINS?.split(',').map(origin => origin.trim()) || ['*'];
+  
+  // Determine the appropriate origin header
+  let allowOrigin = '*';
+  if (request && allowedOrigins.length > 0 && !allowedOrigins.includes('*')) {
+    const requestOrigin = request.headers.get('Origin');
+    if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
+      allowOrigin = requestOrigin;
+    } else if (requestOrigin) {
+      // Request from non-allowed origin - deny
+      allowOrigin = 'null';
+    }
+  } else if (allowedOrigins.length > 0 && !allowedOrigins.includes('*')) {
+    // No specific request, but origins are restricted - use first allowed origin
+    allowOrigin = allowedOrigins[0];
+  }
   
   return {
-    'Access-Control-Allow-Origin': '*', // Could be more restrictive in production
+    'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, X-Foundry-Version, X-Module-Version, X-Privacy-Level, User-Agent',
-    'Access-Control-Max-Age': '86400'
+    'Access-Control-Max-Age': '86400',
+    'Access-Control-Allow-Credentials': allowOrigin !== '*' ? 'true' : 'false'
   };
 }
 
@@ -426,10 +484,10 @@ async function sendToSentry(event: SentryEvent, dsn: string): Promise<string | n
 
     // Parse Sentry response to extract event ID
     try {
-      const responseData = await response.json();
+      const responseData = await response.json() as { id?: string };
       const eventId = responseData.id;
       console.log('Successfully sent event to Sentry, ID:', eventId);
-      return eventId;
+      return eventId || 'unknown';
     } catch (parseError) {
       console.warn('Could not parse Sentry response, but request was successful');
       return 'unknown';
@@ -463,7 +521,7 @@ function createStandardResponse(
     status: options.status || (success ? 200 : 400),
     headers: {
       'Content-Type': 'application/json',
-      ...getCORSHeaders({} as Env)
+      ...getCORSHeaders()
     }
   });
 }
