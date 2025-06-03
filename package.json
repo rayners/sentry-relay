@@ -1,0 +1,28 @@
+{
+  "name": "sentry-relay",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker that relays Foundry VTT error reports to Sentry",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0",
+    "wrangler": "^3.100.0"
+  },
+  "keywords": [
+    "cloudflare-workers",
+    "foundry-vtt",
+    "error-reporting",
+    "sentry",
+    "relay"
+  ],
+  "author": "rayners",
+  "license": "MIT"
+}

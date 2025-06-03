@@ -1,0 +1,25 @@
+name = "sentry-relay"
+main = "src/index.ts"
+compatibility_date = "2024-12-18"
+compatibility_flags = ["nodejs_compat"]
+
+[env.production]
+name = "sentry-relay"
+routes = [
+  { pattern = "errors.rayners.dev/*", zone_name = "rayners.dev" }
+]
+
+[env.production.vars]
+ALLOWED_ORIGINS = "https://foundry.example.com,http://localhost:30000"
+
+[env.development]
+name = "sentry-relay-dev"
+
+# Environment variables for Sentry integration
+# Set these in Cloudflare dashboard or via wrangler secret put
+[vars]
+ALLOWED_ORIGINS = "https://foundry.example.com,http://localhost:30000"
+
+# Secrets (set via: wrangler secret put SENTRY_DSN_RAYNERS)
+# SENTRY_DSN_RAYNERS = "your-sentry-dsn-for-rayners-modules"
+# Add more Sentry DSNs as needed for other authors
