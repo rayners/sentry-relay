@@ -1,5 +1,14 @@
 # Sentry Relay - Reference Implementation for Foundry VTT Error Reporting
 
+⚠️ **SECURITY WARNING: PROOF OF CONCEPT IMPLEMENTATION**
+This is a proof-of-concept implementation missing critical security features including:
+- Rate limiting and request throttling
+- Comprehensive input validation and data sanitization  
+- Proper CORS origin validation
+- Request size limits
+
+**NOT PRODUCTION-READY**. Use only for development and testing.
+
 A Cloudflare Worker that serves as a reference implementation for receiving error reports from Foundry VTT modules and forwarding them to Sentry. This implementation demonstrates the standard error reporting API that module authors can implement with any backend.
 
 ## Table of Contents
@@ -29,7 +38,7 @@ Foundry VTT Module → Sentry Relay Worker → Sentry Project
 
 ## Standard API Specification
 
-This implementation follows the **Foundry VTT Error Reporting API v1.0** specification.
+This implementation follows a **reference API specification** for Foundry VTT error reporting.
 
 ### Endpoints
 
@@ -406,7 +415,9 @@ export default {
 
 ## Security Considerations
 
-### 1. Input Validation
+⚠️ **Note**: The following security features are planned but not yet implemented in this proof-of-concept.
+
+### 1. Input Validation (Planned)
 
 Always validate incoming data:
 
@@ -425,7 +436,7 @@ function validateErrorReport(report) {
 }
 ```
 
-### 2. Rate Limiting
+### 2. Rate Limiting (Planned)
 
 Implement rate limiting to prevent abuse:
 
@@ -450,7 +461,7 @@ function checkRateLimit(clientIP, limit = 10, window = 60000) {
 }
 ```
 
-### 3. CORS Configuration
+### 3. CORS Configuration (Partially Implemented)
 
 Be specific with CORS origins:
 
@@ -467,7 +478,7 @@ function getCORSHeaders(env) {
 }
 ```
 
-### 4. Sensitive Data Handling
+### 4. Sensitive Data Handling (Planned)
 
 Never log or store sensitive information:
 
@@ -495,9 +506,9 @@ function sanitizeErrorReport(report) {
 
 This reference implementation is designed to be:
 - **Extensible**: Easy to add new backends or modify behavior
-- **Standards-compliant**: Follows the Foundry VTT Error Reporting API
+- **Reference compliant**: Follows the reference error reporting API
 - **Well-documented**: Clear examples for other developers
-- **Secure**: Implements security best practices
+- **Basic Security**: Proof-of-concept with planned security features
 
 When contributing:
 1. Maintain API compatibility
@@ -512,6 +523,6 @@ This reference implementation is provided under the MIT License to encourage ado
 ---
 
 **Need Help?**
-- Check the [Foundry VTT Error Reporting Documentation](https://github.com/your-org/foundry-error-reporting)
-- Review the [API Specification](https://api-docs.example.com/foundry-error-reporting)
+- Check the [Errors and Echoes Documentation](https://github.com/rayners/fvtt-errors-and-echoes)
+- Review the module's API examples and integration guides
 - Join the community discussion on Discord
