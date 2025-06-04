@@ -239,10 +239,11 @@ The worker routes errors based on the `{author}` path parameter:
 
 ### CORS Configuration
 
-The worker automatically handles CORS for the origins listed in `ALLOWED_ORIGINS`. This should include:
-- Your Foundry VTT domain(s)
-- `http://localhost:30000` for local development
-- Any other domains where modules might run
+The worker automatically handles CORS for all origins by default (`ALLOWED_ORIGINS = "*"`). This allows error reports from any Foundry VTT instance worldwide. 
+
+For additional security, you can restrict to specific origins:
+- Set `ALLOWED_ORIGINS` to specific domains: `"https://your-domain.com,http://localhost:30000"`
+- Use `"*"` (default) to allow all origins for maximum compatibility
 
 ## Testing
 

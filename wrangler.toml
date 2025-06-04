@@ -10,7 +10,7 @@ routes = [
 ]
 
 [env.production.vars]
-ALLOWED_ORIGINS = "https://foundry.example.com,http://localhost:30000"
+ALLOWED_ORIGINS = "*"
 
 [env.development]
 name = "sentry-relay-dev"
@@ -18,7 +18,7 @@ name = "sentry-relay-dev"
 # Environment variables for Sentry integration
 # Set these in Cloudflare dashboard or via wrangler secret put
 [vars]
-ALLOWED_ORIGINS = "https://foundry.example.com,http://localhost:30000"
+ALLOWED_ORIGINS = "*"
 
 # Secrets (set via: wrangler secret put SENTRY_DSN_RAYNERS)
 # SENTRY_DSN_RAYNERS = "your-sentry-dsn-for-rayners-modules"

@@ -336,25 +336,31 @@ function getCORSHeaders(env?: Env, request?: Request): Record<string, string> {
   
   // Determine the appropriate origin header
   let allowOrigin = '*';
-  if (request && allowedOrigins.length > 0 && !allowedOrigins.includes('*')) {
+  let allowCredentials = 'false';
+  
+  // If wildcard is explicitly allowed, use it
+  if (allowedOrigins.includes('*')) {
+    allowOrigin = '*';
+    allowCredentials = 'false';
+  } else if (request && allowedOrigins.length > 0) {
+    // Check if request origin is in allowed list
     const requestOrigin = request.headers.get('Origin');
     if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
       allowOrigin = requestOrigin;
-    } else if (requestOrigin) {
-      // Request from non-allowed origin - deny
-      allowOrigin = 'null';
+      allowCredentials = 'true';
+    } else {
+      // Request from non-allowed origin - still allow but without credentials
+      allowOrigin = '*';
+      allowCredentials = 'false';
     }
-  } else if (allowedOrigins.length > 0 && !allowedOrigins.includes('*')) {
-    // No specific request, but origins are restricted - use first allowed origin
-    allowOrigin = allowedOrigins[0];
   }
   
   return {
     'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-Foundry-Version, X-Module-Version, X-Privacy-Level, User-Agent',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Foundry-Version, X-Module-Version, X-Privacy-Level, User-Agent, Origin, Accept',
     'Access-Control-Max-Age': '86400',
-    'Access-Control-Allow-Credentials': allowOrigin !== '*' ? 'true' : 'false'
+    'Access-Control-Allow-Credentials': allowCredentials
   };
 }
 
